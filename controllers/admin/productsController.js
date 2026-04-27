@@ -20,9 +20,14 @@ const createProduct = async (req, res) => {
   try {
     const body = req.body || {};
     const name = String(body.name || "").trim();
+    const coaUrl = String(body.coaUrl || "").trim();
 
     if (!name) {
       return res.status(400).json({ message: "Product name is required." });
+    }
+
+    if (!coaUrl) {
+      return res.status(400).json({ message: "COA is required to create a product." });
     }
 
     const product = await Product.create({
@@ -33,7 +38,7 @@ const createProduct = async (req, res) => {
       purity: body.purity ? String(body.purity).trim() : null,
       badge: body.badge ? String(body.badge).trim() : null,
       images: Array.isArray(body.images) ? body.images : [],
-      coaUrl: body.coaUrl || null,
+      coaUrl,
       variants: Array.isArray(body.variants) ? body.variants : [],
     });
 

@@ -5,7 +5,7 @@ const { sanitizeUser } = require("../../helpers/authHelpers");
 const {
   enrichOrderRecord,
   enrichOrders,
-  renderOrderItemsHtml,
+  renderOrderFinancialSummaryHtml,
   summarizeOrderItems,
   toNumber,
 } = require("../../helpers/orderItemHelpers");
@@ -66,6 +66,19 @@ const formatAddress = (address) => {
 
   return lines.join(", ");
 };
+
+const buildOrderEmailHtml = (order, heading, intro) => `
+  <h2>${heading}</h2>
+  ${intro ? `<p>${intro}</p>` : ""}
+  <p><strong>Order #:</strong> ${order.orderNumber}</p>
+  <p><strong>Customer:</strong> ${order.customer}</p>
+  <p><strong>Email:</strong> ${order.email}</p>
+  <p><strong>Date:</strong> ${order.date}</p>
+  <p><strong>Status:</strong> ${order.status}</p>
+  <p><strong>Shipping address:</strong> ${formatAddress(order.shippingAddress) || "Not provided"}</p>
+  <p><strong>Shipping method:</strong> ${order.shippingMethod || "Standard shipping"}</p>
+  ${renderOrderFinancialSummaryHtml(order)}
+`;
 
 const buildProductMap = async (orders) => {
   const productIds = new Set();
@@ -176,6 +189,10 @@ const buildInvoicePages = (order) => {
     `Items subtotal: $${Number(order.itemsSubtotal ?? order.total).toFixed(2)}`,
     `Coupon discount: -${couponPercent > 0 ? `${couponPercent.toFixed(0)}%` : `$${Number(order.couponDiscount ?? 0).toFixed(2)}`}`,
     `Volume discount: -$${Number(order.volumeDiscount ?? 0).toFixed(2)}`,
+    `Shipping method: ${order.shippingMethod || "Standard shipping"}`,
+    `Shipping fee: $${Number(order.shippingFee ?? 0).toFixed(2)}`,
+    `Delivery guarantee: $${Number(order.deliveryGuaranteeFee ?? 0).toFixed(2)}`,
+    `Tax: $${Number(order.tax ?? 0).toFixed(2)}`,
     `Final total: $${Number(order.finalTotal ?? order.total).toFixed(2)}`,
   ];
 
@@ -526,7 +543,16 @@ const createOrder = async (req, res) => {
     const couponDiscount = Math.max(0, toNumber(body.couponDiscount ?? body.discount, 0));
     const volumeDiscount = summary.volumeDiscount;
     const totalDiscount = Number((couponDiscount + volumeDiscount).toFixed(2));
-    const total = Math.max(0, toNumber(body.total, summary.itemsSubtotal - totalDiscount));
+    const shippingFee = Math.max(0, toNumber(body.shippingFee ?? body.shippingCost, 0));
+    const deliveryGuaranteeFee = Math.max(
+      0,
+      toNumber(body.deliveryGuaranteeFee ?? body.dgCost ?? body.deliveryGuarantee, 0),
+    );
+    const tax = Math.max(0, toNumber(body.tax, 0));
+    const estimatedTotal = Number(
+      (summary.itemsSubtotal - totalDiscount + shippingFee + deliveryGuaranteeFee + tax).toFixed(2),
+    );
+    const total = Math.max(0, toNumber(body.total, estimatedTotal));
     const fee = Number((total * 0.029 + 0.3).toFixed(2));
     const net = Math.max(0, Number((total - fee).toFixed(2)));
     const paymentPayload = await getPaymentPayloadForSchema({
@@ -558,6 +584,10 @@ const createOrder = async (req, res) => {
           email: body.email || req.user.email,
           items,
           total,
+          shippingMethod: body.shippingMethod || null,
+          shippingFee,
+          deliveryGuaranteeFee,
+          tax,
           status: body.status || "pending",
           date: body.date || new Date(),
           shippingAddress: formatAddress(body.shippingAddress || body.shippingAddressText || ""),
@@ -600,22 +630,43 @@ const createOrder = async (req, res) => {
     const enrichedOrder = enrichOrderRecord(order);
 
     try {
-      await sendEmail({
-        subject: `New order placed: ${enrichedOrder.orderNumber}`,
-        html: `
-          <h2>New order placed</h2>
-          <p><strong>Order #:</strong> ${enrichedOrder.orderNumber}</p>
-          <p><strong>Customer:</strong> ${enrichedOrder.customer}</p>
-          <p><strong>Email:</strong> ${enrichedOrder.email}</p>
-          <p><strong>Items subtotal:</strong> $${toNumber(enrichedOrder.itemsSubtotal).toFixed(2)}</p>
-          <p><strong>Coupon discount:</strong> -$${toNumber(enrichedOrder.couponDiscount).toFixed(2)}</p>
-          <p><strong>Volume discount:</strong> -$${toNumber(enrichedOrder.volumeDiscount).toFixed(2)}</p>
-          <p><strong>Total discount:</strong> -$${toNumber(enrichedOrder.totalDiscount).toFixed(2)}</p>
-          <p><strong>Total:</strong> $${toNumber(enrichedOrder.finalTotal ?? enrichedOrder.total).toFixed(2)}</p>
-          ${renderOrderItemsHtml(enrichedOrder.items)}
-        `,
-        to: process.env.ADMIN_EMAIL,
-      });
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const customerEmail = enrichedOrder.email || req.user.email;
+
+      const emailResults = await Promise.allSettled([
+        adminEmail
+          ? sendEmail({
+              subject: `New order placed: ${enrichedOrder.orderNumber}`,
+              html: buildOrderEmailHtml(
+                enrichedOrder,
+                "New order placed",
+                "A new customer order was created.",
+              ),
+              to: adminEmail,
+            })
+          : Promise.resolve(),
+        customerEmail
+          ? sendEmail({
+              subject: `Your order confirmation: ${enrichedOrder.orderNumber}`,
+              html: buildOrderEmailHtml(
+                enrichedOrder,
+                "Order confirmation",
+                "Thanks for your order. Here is the full breakdown of your charges.",
+              ),
+              to: customerEmail,
+            })
+          : Promise.resolve(),
+      ]);
+
+      if (emailResults[0]?.status === "rejected") {
+        const reason = emailResults[0].reason;
+        console.warn("Admin order notification email failed:", reason?.message || reason);
+      }
+
+      if (emailResults[1]?.status === "rejected") {
+        const reason = emailResults[1].reason;
+        console.warn("Customer order confirmation email failed:", reason?.message || reason);
+      }
     } catch (emailError) {
       console.warn("Order notification email failed:", emailError.message);
     }

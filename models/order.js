@@ -29,6 +29,25 @@ module.exports = (sequelize, Sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
+      shippingMethod: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippingFee: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      deliveryGuaranteeFee: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      tax: {
+        type: Sequelize.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
       status: {
         type: Sequelize.STRING,
         allowNull: false,

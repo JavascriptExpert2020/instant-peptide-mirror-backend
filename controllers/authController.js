@@ -5,7 +5,7 @@ const { sanitizeUser, createToken } = require("../helpers/authHelpers");
 const { sendEmail } = require("../helpers/sendEmail");
 const {
   enrichOrderRecord,
-  renderOrderItemsHtml,
+  renderOrderFinancialSummaryHtml,
   toNumber,
 } = require("../helpers/orderItemHelpers");
 
@@ -34,13 +34,9 @@ const buildOrderEmail = (order, user) => {
   <p><strong>Order #:</strong> ${enrichedOrder.orderNumber}</p>
   <p><strong>Customer:</strong> ${user.firstName} ${user.lastName}</p>
   <p><strong>Email:</strong> ${user.email}</p>
-  <p><strong>Items subtotal:</strong> $${toNumber(enrichedOrder.itemsSubtotal).toFixed(2)}</p>
-  <p><strong>Coupon discount:</strong> -$${toNumber(enrichedOrder.couponDiscount).toFixed(2)}</p>
-  <p><strong>Volume discount:</strong> -$${toNumber(enrichedOrder.volumeDiscount).toFixed(2)}</p>
-  <p><strong>Total discount:</strong> -$${toNumber(enrichedOrder.totalDiscount).toFixed(2)}</p>
-  <p><strong>Total:</strong> $${toNumber(enrichedOrder.finalTotal ?? enrichedOrder.total).toFixed(2)}</p>
+  <p><strong>Shipping method:</strong> ${enrichedOrder.shippingMethod || "Standard shipping"}</p>
+  ${renderOrderFinancialSummaryHtml(enrichedOrder)}
   <p><strong>Status:</strong> ${enrichedOrder.status}</p>
-  ${renderOrderItemsHtml(enrichedOrder.items)}
 `;
 };
 

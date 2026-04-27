@@ -13,6 +13,37 @@ const ensureOrderSchema = async (sequelize) => {
         allowNull: true,
       },
     },
+    {
+      name: "shippingMethod",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippingFee",
+      definition: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+    },
+    {
+      name: "deliveryGuaranteeFee",
+      definition: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+    },
+    {
+      name: "tax",
+      definition: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+    },
   ];
 
   for (const { name, definition } of columnsToAdd) {

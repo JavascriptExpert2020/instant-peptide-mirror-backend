@@ -7,6 +7,8 @@ const toNumber = (value, fallback = 0) => {
 
 const roundMoney = (value) => Number(toNumber(value).toFixed(2));
 
+const formatMoney = (value) => `$${toNumber(value).toFixed(2)}`;
+
 const getQuantity = (item) => {
   const quantity = toNumber(
     item?.quantity ?? item?.qty ?? item?.count ?? item?.units,
@@ -172,6 +174,10 @@ const enrichOrderRecord = (order, productNameMap = {}) => {
   const couponDiscount = roundMoney(plainOrder.discount ?? 0);
   const totalDiscount = roundMoney(couponDiscount + summary.volumeDiscount);
   const totalAfterDiscount = roundMoney(summary.itemsSubtotal - totalDiscount);
+  const shippingFee = roundMoney(plainOrder.shippingFee ?? 0);
+  const deliveryGuaranteeFee = roundMoney(plainOrder.deliveryGuaranteeFee ?? 0);
+  const tax = roundMoney(plainOrder.tax ?? 0);
+  const finalTotalBeforeStored = roundMoney(totalAfterDiscount + shippingFee + deliveryGuaranteeFee + tax);
   const storedTotal = toNumber(plainOrder.total, totalAfterDiscount);
 
   return {
@@ -181,8 +187,11 @@ const enrichOrderRecord = (order, productNameMap = {}) => {
     couponDiscount,
     volumeDiscount: summary.volumeDiscount,
     totalDiscount,
+    shippingFee,
+    deliveryGuaranteeFee,
+    tax,
     itemsTotalAfterVolumeDiscount: roundMoney(summary.itemsSubtotal - summary.volumeDiscount),
-    calculatedTotal: totalAfterDiscount,
+    calculatedTotal: finalTotalBeforeStored,
     finalTotal: storedTotal,
   };
 };
@@ -228,9 +237,39 @@ const renderOrderItemsHtml = (items) => {
   `;
 };
 
+const renderOrderFinancialSummaryHtml = (order) => {
+  const rows = [
+    ["Items subtotal", formatMoney(order.itemsSubtotal ?? order.total)],
+    ["Volume discount", `-${formatMoney(order.volumeDiscount ?? 0).slice(1)}`],
+    ["Coupon discount", `-${formatMoney(order.couponDiscount ?? 0).slice(1)}`],
+    ["Shipping fee", formatMoney(order.shippingFee ?? 0)],
+    ["Delivery guarantee", formatMoney(order.deliveryGuaranteeFee ?? 0)],
+    ["Tax", formatMoney(order.tax ?? 0)],
+    ["Total", formatMoney(order.finalTotal ?? order.total)],
+  ];
+
+  return `
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+      <tbody>
+        ${rows
+          .map(
+            ([label, value], index) => `
+              <tr>
+                <td style="padding:8px 0;border-top:${index === 0 ? "1px solid #e5e7eb" : "none"};font-weight:${label === "Total" ? 700 : 400};">${label}</td>
+                <td style="padding:8px 0;border-top:${index === 0 ? "1px solid #e5e7eb" : "none"};text-align:right;font-weight:${label === "Total" ? 700 : 400};">${value}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+};
+
 module.exports = {
   enrichOrderRecord,
   enrichOrders,
+  renderOrderFinancialSummaryHtml,
   renderOrderItemsHtml,
   summarizeOrderItems,
   toNumber,

@@ -109,6 +109,23 @@ module.exports = (sequelize, Sequelize) => {
         type: Sequelize.TEXT,
         allowNull: true,
       },
+      shippoOrderId: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippoOrderStatus: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippoOrderData: {
+        type: Sequelize.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
+      shippoOrderError: {
+        type: Sequelize.TEXT,
+        allowNull: true,
+      },
     },
     {
       tableName: 'orders',

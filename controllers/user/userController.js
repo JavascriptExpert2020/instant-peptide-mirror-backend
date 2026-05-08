@@ -2,7 +2,7 @@ const { Op } = require("sequelize");
 const { Order, Payment, Download, Product, Coupon, sequelize } = require("../../models");
 const { sendEmail } = require("../../helpers/sendEmail");
 const { sanitizeUser } = require("../../helpers/authHelpers");
-const { createShippoShipment, quoteShippoRates } = require("../../helpers/shippo");
+const { createShippoOrder, createShippoShipment, quoteShippoRates } = require("../../helpers/shippo");
 const {
   enrichOrderRecord,
   enrichOrders,
@@ -639,29 +639,48 @@ const createOrder = async (req, res) => {
       return created;
     });
 
-    let shippoShipment = null;
+    let shippoOrder = null;
     try {
-      shippoShipment = await createShippoShipment({
+      shippoOrder = await createShippoOrder({
         orderNumber,
+        items: summary.items,
         customerName:
           body.customer ||
           `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
           req.user.email,
         customerEmail: body.email || req.user.email,
         shippingAddress: shippingAddress || body.shippingAddress || req.user.shippingAddress,
+        subtotalPrice: summary.itemsSubtotal - totalDiscount,
+        shippingCost: shippingFee || toNumber(selectedShippingRate?.amount, 0),
+        shippingMethod:
+          body.shippingMethod ||
+          selectedShippingRate?.servicelevel_name ||
+          selectedShippingRate?.provider ||
+          null,
+        totalTax: tax,
+        totalPrice: total,
+        currency: body.currency || "USD",
+        orderStatus: "PAID",
+        placedAt: body.date || new Date(),
       });
 
       await order.update({
-        shippoShipmentId: shippoShipment.shipmentId,
-        shippoShipmentStatus: shippoShipment.status,
-        shippoShipmentData: shippoShipment.shipment,
+        shippoOrderId: shippoOrder.orderId,
+        shippoOrderStatus: shippoOrder.status,
+        shippoOrderData: shippoOrder.order,
+        shippoOrderError: null,
+        shippoShipmentId: shippoOrder.orderId,
+        shippoShipmentStatus: shippoOrder.status,
+        shippoShipmentData: shippoOrder.order,
         shippoShipmentError: null,
       });
     } catch (shippoError) {
-      console.warn("Shippo shipment creation failed:", shippoError.message);
+      console.warn("Shippo order creation failed:", shippoError.message);
 
       try {
         await order.update({
+          shippoOrderStatus: "failed",
+          shippoOrderError: shippoError.message,
           shippoShipmentStatus: "failed",
           shippoShipmentError: shippoError.message,
         });
@@ -671,12 +690,15 @@ const createOrder = async (req, res) => {
     }
 
     const enrichedOrder = enrichOrderRecord(order);
-    if (shippoShipment) {
-      enrichedOrder.shippoShipmentId = shippoShipment.shipmentId;
-      enrichedOrder.shippoShipmentStatus = shippoShipment.status;
-      enrichedOrder.shippoShipmentData = shippoShipment.shipment;
+    if (shippoOrder) {
+      enrichedOrder.shippoOrderId = shippoOrder.orderId;
+      enrichedOrder.shippoOrderStatus = shippoOrder.status;
+      enrichedOrder.shippoOrderData = shippoOrder.order;
+      enrichedOrder.shippoOrderError = null;
+      enrichedOrder.shippoShipmentId = shippoOrder.orderId;
+      enrichedOrder.shippoShipmentStatus = shippoOrder.status;
+      enrichedOrder.shippoShipmentData = shippoOrder.order;
       enrichedOrder.shippoShipmentError = null;
-      enrichedOrder.shippoRates = shippoShipment.rates;
     }
     enrichedOrder.shippingRateId = pickString(selectedShippingRate?.object_id) || enrichedOrder.shippingRateId;
     enrichedOrder.shippingRateProvider =

@@ -170,6 +170,54 @@ const normalizeShippoRate = (rate) => {
   };
 };
 
+const formatMoney = (value) => toNumber(value).toFixed(2);
+
+const buildShippoLineItems = (items = [], currency = "USD") => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+
+      const quantity = Math.max(1, toNumber(item.quantity ?? item.qty ?? 1, 1));
+      const lineTotal = Math.max(
+        0,
+        toNumber(item.discountedSubtotal ?? item.lineTotal ?? item.lineSubtotal ?? item.total, 0),
+      );
+      const weightValue = item.weight ?? item.unitWeight ?? item.weightPerUnit;
+      const weightUnit = pickString(item.weight_unit || item.weightUnit) || pickString(process.env.SHIPPO_PARCEL_MASS_UNIT) || "lb";
+
+      const lineItem = {
+        quantity,
+        title: pickString(item.title || item.name || item.productName) || `Item ${index + 1}`,
+        currency,
+        total_price: formatMoney(lineTotal),
+      };
+
+      const sku = pickString(item.sku || item.productSku || item.productCode);
+      if (sku) {
+        lineItem.sku = sku;
+      }
+
+      const description = pickString(item.description);
+      if (description) {
+        lineItem.description = description;
+      }
+
+      if (weightValue !== undefined && weightValue !== null && weightValue !== "") {
+        lineItem.weight = formatMoney(weightValue);
+        lineItem.weight_unit = weightUnit;
+      }
+
+      return lineItem;
+    })
+    .filter(Boolean);
+};
+
 const extractShippoError = (payload, status) => {
   if (!payload) {
     return `Shippo request failed with status ${status}.`;
@@ -191,6 +239,83 @@ const extractShippoError = (payload, status) => {
   }
 
   return `Shippo request failed with status ${status}.`;
+};
+
+const createShippoOrder = async ({
+  orderNumber,
+  customerName,
+  customerEmail,
+  shippingAddress,
+  items = [],
+  subtotalPrice = 0,
+  shippingCost = 0,
+  shippingMethod,
+  totalTax = 0,
+  totalPrice = 0,
+  currency = "USD",
+  orderStatus = "PAID",
+  placedAt = new Date(),
+}) => {
+  const token = pickString(process.env.SHIPPO_API_KEY);
+  if (!token) {
+    throw new Error("Shippo API key is not configured.");
+  }
+
+  const addressFrom = buildOriginAddress();
+  if (!addressFrom) {
+    throw new Error("Shippo origin address is not configured.");
+  }
+
+  const addressTo = buildShippoAddress(shippingAddress, customerName);
+  if (!addressTo) {
+    throw new Error("Customer shipping address is incomplete.");
+  }
+
+  const defaultParcel = buildDefaultParcel();
+  const parsedPlacedAt = placedAt instanceof Date ? placedAt : new Date(placedAt);
+  const safePlacedAt = Number.isNaN(parsedPlacedAt.getTime()) ? new Date() : parsedPlacedAt;
+  const lineItems = buildShippoLineItems(items, currency);
+
+  const payload = {
+    from_address: addressFrom,
+    to_address: {
+      ...addressTo,
+      email: addressTo.email || pickString(customerEmail),
+    },
+    placed_at: safePlacedAt.toISOString(),
+    order_number: pickString(orderNumber) || undefined,
+    order_status: pickString(orderStatus) || "PAID",
+    currency,
+    subtotal_price: formatMoney(subtotalPrice),
+    shipping_cost: shippingCost > 0 ? formatMoney(shippingCost) : undefined,
+    shipping_cost_currency: shippingCost > 0 ? currency : undefined,
+    shipping_method: pickString(shippingMethod) || undefined,
+    total_tax: formatMoney(totalTax),
+    total_price: formatMoney(totalPrice),
+    weight: defaultParcel.weight,
+    weight_unit: defaultParcel.mass_unit,
+    line_items: lineItems.length > 0 ? lineItems : undefined,
+  };
+
+  const response = await fetch(`${SHIPPO_API_BASE}/orders/`, {
+    method: "POST",
+    headers: {
+      Authorization: `ShippoToken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await safeJsonParse(response);
+  if (!response.ok) {
+    throw new Error(extractShippoError(data, response.status));
+  }
+
+  return {
+    orderId: data?.object_id || null,
+    status: data?.order_status || null,
+    order: data,
+  };
 };
 
 const createShippoShipment = async ({
@@ -260,6 +385,7 @@ const quoteShippoRates = async ({ customerName, customerEmail, shippingAddress }
   });
 
 module.exports = {
+  createShippoOrder,
   createShippoShipment,
   quoteShippoRates,
   buildShippoAddress,

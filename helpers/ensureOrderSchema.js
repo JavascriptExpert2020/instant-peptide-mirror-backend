@@ -109,6 +109,35 @@ const ensureOrderSchema = async (sequelize) => {
         allowNull: true,
       },
     },
+    {
+      name: "shippoOrderId",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippoOrderStatus",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippoOrderData",
+      definition: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
+    },
+    {
+      name: "shippoOrderError",
+      definition: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+    },
   ];
 
   for (const { name, definition } of columnsToAdd) {

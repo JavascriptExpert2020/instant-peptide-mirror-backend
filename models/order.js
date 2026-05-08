@@ -33,6 +33,27 @@ module.exports = (sequelize, Sequelize) => {
         type: Sequelize.STRING,
         allowNull: true,
       },
+      shippingRateId: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippingRateProvider: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippingRateService: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippingRateEta: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippingAddressData: {
+        type: Sequelize.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
       shippingFee: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
@@ -69,6 +90,23 @@ module.exports = (sequelize, Sequelize) => {
       },
       discount: {
         type: Sequelize.DECIMAL(10, 2),
+        allowNull: true,
+      },
+      shippoShipmentId: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippoShipmentStatus: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      shippoShipmentData: {
+        type: Sequelize.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
+      shippoShipmentError: {
+        type: Sequelize.TEXT,
         allowNull: true,
       },
     },

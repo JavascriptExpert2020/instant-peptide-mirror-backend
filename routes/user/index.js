@@ -9,6 +9,7 @@ const {
   recordCoaDownload,
   listDownloads,
   createOrder,
+  getShippingRates,
 } = require("../../controllers/user/userController");
 
 router.get("/", userHome);
@@ -18,6 +19,7 @@ router.get("/orders", authenticateToken, listOrders);
 router.get("/orders/:orderNumber/invoice", authenticateToken, downloadInvoice);
 router.post("/downloads", authenticateToken, recordCoaDownload);
 router.get("/downloads", authenticateToken, listDownloads);
+router.post("/shipping-rates", authenticateToken, getShippingRates);
 router.post("/orders", authenticateToken, createOrder);
 
 module.exports = router;

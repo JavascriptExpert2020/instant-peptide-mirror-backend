@@ -21,6 +21,42 @@ const ensureOrderSchema = async (sequelize) => {
       },
     },
     {
+      name: "shippingRateId",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippingRateProvider",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippingRateService",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippingRateEta",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippingAddressData",
+      definition: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
+    },
+    {
       name: "shippingFee",
       definition: {
         type: DataTypes.DECIMAL(10, 2),
@@ -42,6 +78,35 @@ const ensureOrderSchema = async (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0,
+      },
+    },
+    {
+      name: "shippoShipmentId",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippoShipmentStatus",
+      definition: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+    },
+    {
+      name: "shippoShipmentData",
+      definition: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
+    },
+    {
+      name: "shippoShipmentError",
+      definition: {
+        type: DataTypes.TEXT,
+        allowNull: true,
       },
     },
   ];

@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const { Order, Payment, Download, Product, Coupon, sequelize } = require("../../models");
 const { sendEmail } = require("../../helpers/sendEmail");
 const { sanitizeUser } = require("../../helpers/authHelpers");
+const { createShippoShipment, quoteShippoRates } = require("../../helpers/shippo");
 const {
   enrichOrderRecord,
   enrichOrders,
@@ -531,6 +532,9 @@ const createOrder = async (req, res) => {
     const items = Array.isArray(body.items) ? body.items : [];
     const billingAddress = normalizeAddress(body.billingAddress);
     const shippingAddress = normalizeAddress(body.shippingAddress);
+    const selectedShippingRate = body.selectedShippingRate && typeof body.selectedShippingRate === "object"
+      ? body.selectedShippingRate
+      : null;
 
     if (items.length === 0) {
       return res
@@ -585,6 +589,14 @@ const createOrder = async (req, res) => {
           items,
           total,
           shippingMethod: body.shippingMethod || null,
+          shippingRateId: pickString(selectedShippingRate?.object_id) || null,
+          shippingRateProvider: pickString(selectedShippingRate?.provider) || null,
+          shippingRateService: pickString(selectedShippingRate?.servicelevel_name) || null,
+          shippingRateEta:
+            selectedShippingRate?.estimated_days !== undefined && selectedShippingRate?.estimated_days !== null
+              ? `${selectedShippingRate.estimated_days} day${Number(selectedShippingRate.estimated_days) === 1 ? "" : "s"}`
+              : null,
+          shippingAddressData: shippingAddress || null,
           shippingFee,
           deliveryGuaranteeFee,
           tax,
@@ -627,7 +639,53 @@ const createOrder = async (req, res) => {
       return created;
     });
 
+    let shippoShipment = null;
+    try {
+      shippoShipment = await createShippoShipment({
+        orderNumber,
+        customerName:
+          body.customer ||
+          `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+          req.user.email,
+        customerEmail: body.email || req.user.email,
+        shippingAddress: shippingAddress || body.shippingAddress || req.user.shippingAddress,
+      });
+
+      await order.update({
+        shippoShipmentId: shippoShipment.shipmentId,
+        shippoShipmentStatus: shippoShipment.status,
+        shippoShipmentData: shippoShipment.shipment,
+        shippoShipmentError: null,
+      });
+    } catch (shippoError) {
+      console.warn("Shippo shipment creation failed:", shippoError.message);
+
+      try {
+        await order.update({
+          shippoShipmentStatus: "failed",
+          shippoShipmentError: shippoError.message,
+        });
+      } catch (updateError) {
+        console.warn("Unable to persist Shippo error state:", updateError.message);
+      }
+    }
+
     const enrichedOrder = enrichOrderRecord(order);
+    if (shippoShipment) {
+      enrichedOrder.shippoShipmentId = shippoShipment.shipmentId;
+      enrichedOrder.shippoShipmentStatus = shippoShipment.status;
+      enrichedOrder.shippoShipmentData = shippoShipment.shipment;
+      enrichedOrder.shippoShipmentError = null;
+      enrichedOrder.shippoRates = shippoShipment.rates;
+    }
+    enrichedOrder.shippingRateId = pickString(selectedShippingRate?.object_id) || enrichedOrder.shippingRateId;
+    enrichedOrder.shippingRateProvider =
+      pickString(selectedShippingRate?.provider) || enrichedOrder.shippingRateProvider;
+    enrichedOrder.shippingRateService =
+      pickString(selectedShippingRate?.servicelevel_name) || enrichedOrder.shippingRateService;
+    enrichedOrder.shippingRateEta = selectedShippingRate?.estimated_days
+      ? `${selectedShippingRate.estimated_days} day${Number(selectedShippingRate.estimated_days) === 1 ? "" : "s"}`
+      : enrichedOrder.shippingRateEta;
 
     try {
       const adminEmail = process.env.ADMIN_EMAIL;
@@ -684,6 +742,41 @@ const createOrder = async (req, res) => {
   }
 };
 
+const getShippingRates = async (req, res) => {
+  try {
+    if (req.user.status !== "active") {
+      return res.status(403).json({ message: "Inactive users cannot request shipping rates." });
+    }
+
+    const body = req.body || {};
+    const shippingAddress = normalizeAddress(body.shippingAddress);
+    if (!shippingAddress) {
+      return res.status(400).json({ message: "A shipping address is required." });
+    }
+
+    const quote = await quoteShippoRates({
+      customerName:
+        body.customer ||
+        `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+        req.user.email,
+      customerEmail: body.email || req.user.email,
+      shippingAddress,
+    });
+
+    return res.status(200).json({
+      shipmentId: quote.shipmentId,
+      status: quote.status,
+      rates: quote.rates,
+    });
+  } catch (error) {
+    console.log("Error fetching shipping rates", error);
+    return res.status(500).json({
+      message: "Unable to fetch shipping rates.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 const listDownloads = async (req, res) => {
   try {
     const downloads = await Download.findAll({
@@ -723,4 +816,5 @@ module.exports = {
   recordCoaDownload,
   listDownloads,
   createOrder,
+  getShippingRates,
 };
